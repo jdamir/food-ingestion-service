@@ -1,0 +1,79 @@
+syntax = "proto3";
+
+package tracker;
+option go_package = "internal/delivery/grpc/pb";
+
+
+service FoodTrackerService {
+  rpc TrackPurchase (TrackPurchaseRequest) returns (TrackResponse);
+  rpc TrackCooking (TrackCookingRequest) returns (TrackResponse);
+  rpc TrackConsumption (TrackConsumptionRequest) returns (TrackResponse);
+  rpc TrackWaste (TrackWasteRequest) returns (TrackResponse);
+  rpc GetFridgeState (FridgeStateRequest) returns (FridgeStateResponse);
+}
+
+// 1. Продукт при покупке (Теперь имеет и порции/штуки, и вес)
+message PurchaseItem {
+  string item_id = 1;
+  string name = 2;
+  string category = 3;
+  double portions = 4;     // Количество (например, 2.0 пачки)
+  double weight_grams = 5; // Вес (например, 1000.0 грамм)
+  double price = 6;        // Цена (только для биллинга)
+}
+
+message TrackPurchaseRequest {
+  string receipt_no = 1;
+  double total_price = 2;
+  repeated PurchaseItem items = 3;
+}
+
+// 2. Ингредиент при готовке (Списываем и штуки, и вес)
+message Ingredient {
+  string source_item_id = 1;
+  double used_portions = 2;    // Сколько штук/порций взяли
+  double used_weight_grams = 3; // Сколько грамм изъяли
+}
+
+// 3. Результат готовки (Новое блюдо получает и порции, и вес)
+message TrackCookingRequest {
+  string dish_item_id = 1;
+  string dish_name = 2;
+  double yield_portions = 3;     // Сколько ПОРЦИЙ вышло (double — для 5.5 порций!)
+  double yield_weight_grams = 4; // Общий ВЕС получившегося блюда
+  repeated Ingredient ingredients = 5;
+}
+
+message TrackConsumptionRequest {
+  string item_id = 1;
+  double portions = 2;
+  double weight_grams = 3;
+}
+
+message TrackWasteRequest {
+  string item_id = 1;
+  double portions = 2;
+  double weight_grams = 3;
+  string reason = 4;
+}
+
+message FridgeStateRequest {}
+
+// 4. Элемент холодильника (Выводит пользователю и штуки, и вес)
+message FridgeItem {
+  string item_id = 1;
+  string product_name = 2;
+  string category = 3;
+  double current_portions = 4;     // Оставшееся кол-во в штуках/порциях
+  double current_weight_grams = 5; // Оставшийся вес в граммах
+  bool is_cooked_dish = 6;
+}
+
+message FridgeStateResponse {
+  repeated FridgeItem items = 1;
+}
+
+message TrackResponse {
+  bool success = 1;
+  string message = 2;
+}

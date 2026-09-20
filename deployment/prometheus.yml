@@ -1,0 +1,7 @@
+global:
+  scrape_interval: 5s
+
+scrape_configs:
+  - job_name: 'food_ingestion_service'
+    static_configs:
+      - targets: ['app:8081'] # Наш Go сервис будет отдавать метрики на порту 8081 /metrics

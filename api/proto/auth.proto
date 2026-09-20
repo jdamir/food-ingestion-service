@@ -1,0 +1,60 @@
+syntax = "proto3";
+
+package auth;
+option go_package = "internal/delivery/grpc/auth_pb"; 
+
+service AuthService {
+  rpc Register (RegisterRequest) returns (RegisterResponse);
+  rpc Login (LoginRequest) returns (TokenResponse);
+  rpc RefreshToken (RefreshRequest) returns (TokenResponse);
+  rpc Logout (LogoutRequest) returns (LogoutResponse);
+  rpc ValidateToken (ValidateRequest) returns (ValidateResponse);
+}
+
+enum UserType {
+  REAL = 0;
+  DIGITAL = 1;
+}
+
+message RegisterRequest {
+  string email = 1;
+  string password = 2;
+  UserType user_type = 3;
+}
+
+message RegisterResponse {
+  int64 user_id = 1;
+}
+
+message LoginRequest {
+  string email = 1;
+  string password = 2;
+}
+
+message TokenResponse {
+  string access_token = 1;
+  string refresh_token = 2;
+}
+
+message RefreshRequest {
+  string refresh_token = 1;
+}
+
+message LogoutRequest {
+  string refresh_token = 1;
+}
+
+message LogoutResponse {
+  bool success = 1;
+}
+
+message ValidateRequest {
+  string access_token = 1;
+}
+
+message ValidateResponse {
+  int64 user_id = 1;
+  bool is_valid = 2;
+  string user_type = 3;
+  string group_id = 4;
+}
