@@ -33,7 +33,9 @@ CREATE TABLE refrigerator_inventory (
 );
 
 
+-- =========================================================================
 -- 3. ИСТОРИЯ ГОТОВКИ (Заголовок события)
+-- =========================================================================
 CREATE TABLE IF NOT EXISTS cooking_history (
     cooking_id BIGSERIAL PRIMARY KEY,
     group_id UUID NOT NULL,
@@ -46,12 +48,14 @@ CREATE TABLE IF NOT EXISTS cooking_history (
 -- Ингредиенты (Детали готовки)
 CREATE TABLE IF NOT EXISTS cooking_ingredients (
     id BIGSERIAL PRIMARY KEY,
-    -- ДОБАВЛЕН FOREIGN KEY: каскадно удаляет ингредиенты, если удалена запись готовки
+    -- Каскадно удаляет ингредиенты, если удалена запись готовки
     cooking_id BIGINT NOT NULL REFERENCES cooking_history(cooking_id) ON DELETE CASCADE,
-    source_item_id UUID NOT NULL,    -- Что именно списали из холодильника
-    used_quantity NUMERIC(10,2) NOT NULL,     
+    source_item_id UUID NOT NULL,       -- Что именно списали из холодильника
+    used_units NUMERIC(10,2) NOT NULL,  -- Количество штук/порций
+    used_weight_grams NUMERIC(10,2) NOT NULL DEFAULT 0.00, -- ИСПРАВЛЕНО: Добавлено недостающее поле для веса в граммах!     
     swiped_at TIMESTAMP NOT NULL
 );
+
 CREATE INDEX IF NOT EXISTS idx_cooking_ingredients_id ON cooking_ingredients(cooking_id);
 CREATE INDEX IF NOT EXISTS idx_cooking_ingredients_source ON cooking_ingredients(source_item_id);
 

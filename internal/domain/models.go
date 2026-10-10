@@ -41,6 +41,7 @@ type IngredientDTO struct {
 // CookingDTO описывает результат процесса приготовления блюда
 type CookingDTO struct {
 	GroupID          string          `json:"group_id"`
+	UserID           int64           `json:"user_id"`
 	DishItemID       string          `json:"dish_item_id"`
 	DishName         string          `json:"dish_name"`
 	YieldUnits       float64         `json:"yield_units"`
@@ -58,4 +59,17 @@ type FridgeItem struct {
 	CurrentWeightGrams float64   `json:"current_weight_grams"`
 	IsCookedDish       bool      `json:"is_cooked_dish"`
 	ExpiresAt          time.Time `json:"expires_at"`
+}
+
+type ConsumptionItemDTO struct {
+	ItemID      string  `json:"item_id"`
+	Units       float64 `json:"portions"`
+	WeightGrams float64 `json:"weight_grams"`
+}
+
+type WasteItemDTO struct {
+	ItemID      string  `json:"item_id"`
+	Units       float64 `json:"portions"` // Используем тег "portions" для матчинга с Postman
+	WeightGrams float64 `json:"weight_grams"`
+	Reason      string  `json:"reason"`
 }

@@ -10,11 +10,11 @@ services:
       - "5434:5432"
     volumes:
       - pgdata_tracker:/var/lib/postgresql/data
-      - ./deployment/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - ./deployment/postgres:/docker-entrypoint-initdb.d:ro
     networks:
-      - tracker-network # Живет во внутренней сети трекера
+      - tracker-network
 
-  kafka:
+  tracker-kafka:
     image: apache/kafka:latest
     container_name: tracker-kafka
     ports:
@@ -24,17 +24,19 @@ services:
       KAFKA_PROCESS_ROLES: broker,controller
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      # ВАЖНО: EXTERNAL теперь слушает на 0.0.0.0 (интерфейсы докера)
       KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,CONTROLLER://0.0.0.0:9093,EXTERNAL://0.0.0.0:9092
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,EXTERNAL://localhost:9092
+      # ВАЖНО: Перенаправляем внешних клиентов на имя 'tracker-kafka:9092' вместо localhost
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://tracker-kafka:29092,EXTERNAL://tracker-kafka:9092
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT,EXTERNAL:PLAINTEXT
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_LOG_DIRS: /tmp/kraft-combined-logs
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
     networks:
-      tracker-network:
-        aliases:
-          - kafka
+      - tracker-network
+      - auth-shared-net # <--- Добавили общую сеть для Кафки
+    # Убираем aliases (имени контейнера и так достаточно, когда сеть общая)
 
   app:
     build:
@@ -46,14 +48,14 @@ services:
       - "8081:8081"
     environment:
       - DB_DSN=postgres://user:password@tracker-db:5432/food_db?sslmode=disable
-      - KAFKA_BROKERS=kafka:29092
-      - AUTH_SERVICE_ADDR=auth-service:50051 # Имя контейнера из auth-service
+      - KAFKA_BROKERS=tracker-kafka:29092 # Внутренний сервис ходит по внутреннему порту 29092
+      - AUTH_SERVICE_ADDR=auth-service:50051
     depends_on:
       - postgres
-      - kafka
+      - tracker-kafka # <-- Исправлена опечатка (было - kafka)
     networks:
-      - tracker-network   # Для связи с Postgres и Kafka
-      - auth-shared-net   # Для связи по gRPC с внешним auth-service
+      - tracker-network
+      - auth-shared-net
 
 volumes:
   pgdata_tracker:
@@ -63,4 +65,4 @@ networks:
     driver: bridge
   auth-shared-net:
     external: true
-    name: auth-shared-network # Подключаемся к глобальной сети, созданной сервисом авторизации
+    name: auth-shared-network

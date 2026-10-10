@@ -8,6 +8,7 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+
 type FoodTrackerServer struct {
 	pb.UnimplementedFoodTrackerServiceServer
 	trackerService domain.FoodTrackerService
@@ -18,6 +19,7 @@ func NewFoodTrackerServer(ts domain.FoodTrackerService, fs domain.FridgeInventor
 	return &FoodTrackerServer{trackerService: ts, fridgeService: fs}
 }
 
+// 1. ПОКУПКА (TrackPurchase)
 func (s *FoodTrackerServer) TrackPurchase(ctx context.Context, req *pb.TrackPurchaseRequest) (*pb.TrackResponse, error) {
 	userID := ctx.Value(UserIDKey).(int64)
 	groupID := ctx.Value(GroupIDKey).(string)
@@ -28,8 +30,8 @@ func (s *FoodTrackerServer) TrackPurchase(ctx context.Context, req *pb.TrackPurc
 			ItemID:      item.ItemId,
 			Name:        item.Name,
 			Category:    item.Category,
-			Units:       item.Portions,     // Передаем меру количества (пачки/штуки)
-			WeightGrams: item.WeightGrams, // Передаем физический вес
+			Units:       item.Portions,    
+			WeightGrams: item.WeightGrams,
 			Price:       item.Price,
 		})
 	}
@@ -47,6 +49,7 @@ func (s *FoodTrackerServer) TrackPurchase(ctx context.Context, req *pb.TrackPurc
 	return &pb.TrackResponse{Success: true, Message: "Purchase tracked successfully"}, nil
 }
 
+// 2. ГОТОВКА (TrackCooking)
 func (s *FoodTrackerServer) TrackCooking(ctx context.Context, req *pb.TrackCookingRequest) (*pb.TrackResponse, error) {
 	userID := ctx.Value(UserIDKey).(int64)
 	groupID := ctx.Value(GroupIDKey).(string)
@@ -55,16 +58,16 @@ func (s *FoodTrackerServer) TrackCooking(ctx context.Context, req *pb.TrackCooki
 	for _, ing := range req.Ingredients {
 		domainIngredients = append(domainIngredients, domain.IngredientDTO{
 			SourceItemID:    ing.SourceItemId,
-			UsedUnits:       ing.UsedPortions,     // Сколько штук/пачек взяли
-			UsedWeightGrams: ing.UsedWeightGrams, // Сколько грамм изъяли
+			UsedUnits:       ing.UsedPortions,     
+			UsedWeightGrams: ing.UsedWeightGrams, 
 		})
 	}
 
 	dto := &domain.CookingDTO{
 		DishItemID:       req.DishItemId,
 		DishName:         req.DishName,
-		YieldUnits:       req.YieldPortions,     // Выход в штуках/порциях еды
-		YieldWeightGrams: req.YieldWeightGrams, // Общий вес кастрюли
+		YieldUnits:       req.YieldPortions,     
+		YieldWeightGrams: req.YieldWeightGrams, 
 		Ingredients:      domainIngredients,
 		GroupID:          groupID,
 	}
@@ -75,27 +78,48 @@ func (s *FoodTrackerServer) TrackCooking(ctx context.Context, req *pb.TrackCooki
 	return &pb.TrackResponse{Success: true, Message: "Cooking tracked successfully"}, nil
 }
 
+// 3. ПОТРЕБЛЕНИЕ / ОБЕД (TrackConsumption - Пакетный метод)
 func (s *FoodTrackerServer) TrackConsumption(ctx context.Context, req *pb.TrackConsumptionRequest) (*pb.TrackResponse, error) {
 	userID := ctx.Value(UserIDKey).(int64)
 	groupID := ctx.Value(GroupIDKey).(string)
 
-	// Метод принимает и списывает параллельно и штуки, и граммы
-	if err := s.trackerService.TrackConsumption(ctx, userID, groupID, req.ItemId, req.Portions, req.WeightGrams); err != nil {
+	var domainItems []domain.ConsumptionItemDTO
+	for _, item := range req.Items {
+		domainItems = append(domainItems, domain.ConsumptionItemDTO{
+			ItemID:      item.ItemId,
+			Units:       item.Portions,
+			WeightGrams: item.WeightGrams,
+		})
+	}
+
+	if err := s.trackerService.TrackBatchConsumption(ctx, userID, groupID, domainItems); err != nil {
 		return nil, status.Errorf(codes.Internal, err.Error())
 	}
-	return &pb.TrackResponse{Success: true, Message: "Consumption tracked successfully"}, nil
+	return &pb.TrackResponse{Success: true, Message: "Batch consumption tracked successfully"}, nil
 }
 
+// 4. СПИСАНИЕ В МУСОР (TrackWaste)
 func (s *FoodTrackerServer) TrackWaste(ctx context.Context, req *pb.TrackWasteRequest) (*pb.TrackResponse, error) {
 	userID := ctx.Value(UserIDKey).(int64)
 	groupID := ctx.Value(GroupIDKey).(string)
 
-	if err := s.trackerService.TrackWaste(ctx, userID, groupID, req.ItemId, req.Portions, req.WeightGrams, req.Reason); err != nil {
+	var domainItems []domain.WasteItemDTO
+	for _, item := range req.Items {
+		domainItems = append(domainItems, domain.WasteItemDTO{
+			ItemID:      item.ItemId,
+			Units:       item.Portions,
+			WeightGrams: item.WeightGrams,
+			Reason:      item.Reason,
+		})
+	}
+
+	if err := s.trackerService.TrackBatchWaste(ctx, userID, groupID, domainItems); err != nil {
 		return nil, status.Errorf(codes.Internal, err.Error())
 	}
-	return &pb.TrackResponse{Success: true, Message: "Waste tracked successfully"}, nil
+	return &pb.TrackResponse{Success: true, Message: "Batch waste tracked successfully"}, nil
 }
 
+// 5. СОСТОЯНИЕ ХОЛОДИЛЬНИКА (GetFridgeState)
 func (s *FoodTrackerServer) GetFridgeState(ctx context.Context, req *pb.FridgeStateRequest) (*pb.FridgeStateResponse, error) {
 	groupID := ctx.Value(GroupIDKey).(string)
 
@@ -110,8 +134,8 @@ func (s *FoodTrackerServer) GetFridgeState(ctx context.Context, req *pb.FridgeSt
 			ItemId:             item.ItemID,
 			ProductName:        item.ProductName,
 			Category:           item.Category,
-			CurrentPortions:    item.CurrentUnits,       // Выводим остаток в штуках/порциях
-			CurrentWeightGrams: item.CurrentWeightGrams, // Выводим остаток в граммах
+			CurrentPortions:    item.CurrentUnits,       
+			CurrentWeightGrams: item.CurrentWeightGrams, 
 			IsCookedDish:       item.IsCookedDish,
 		})
 	}

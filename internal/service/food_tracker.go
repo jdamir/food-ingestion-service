@@ -105,16 +105,39 @@ func (s *foodTrackerService) TrackConsumption(ctx context.Context, userID int64,
 	return s.consumptionRepo.SaveConsumption(ctx, userID, groupID, itemID, units, weight)
 }
 
-// TrackWaste списывает испорченное в мусор и делает запись в историю отходов только при успехе
-func (s *foodTrackerService) TrackWaste(ctx context.Context, userID int64, groupID string, itemID string, units float64, weight float64, reason string) error {
-	// 1. Сначала пытаемся списать. Если товара нет, метод вернет ошибку и код прервется
-	if err := s.fridgeRepo.UpdateStock(ctx, groupID, itemID, -units, -weight); err != nil {
-		return fmt.Errorf("отмена записи отходов: %w", err)
+func (s *foodTrackerService) TrackBatchConsumption(ctx context.Context, userID int64, groupID string, items []domain.ConsumptionItemDTO) error {
+	for _, item := range items {
+		// Вызываем уже проверенный симулятор списания
+		if err := s.fridgeRepo.UpdateStock(ctx, groupID, item.ItemID, -item.Units, -item.WeightGrams); err != nil {
+			return fmt.Errorf("ошибка пакетного списания товара %s: %w", item.ItemID, err)
+		}
+		if err := s.consumptionRepo.SaveConsumption(ctx, userID, groupID, item.ItemID, item.Units, item.WeightGrams); err != nil {
+			return fmt.Errorf("ошибка записи в историю для %s: %w", item.ItemID, err)
+		}
 	}
-	
-	// 2. В историю пишем только тогда, когда списание из холодильника прошло успешно
-	return s.wasteRepo.SaveWaste(ctx, userID, groupID, itemID, units, weight, reason)
+	return nil
 }
+
+// TrackWaste списывает испорченное в мусор и делает запись в историю отходов только при успехе
+func (s *foodTrackerService) TrackBatchWaste(ctx context.Context, userID int64, groupID string, items []domain.WasteItemDTO) error {
+	for _, item := range items {
+		// Сначала строго проверяем наличие и списываем дельту из холодильника
+		if err := s.fridgeRepo.UpdateStock(ctx, groupID, item.ItemID, -item.Units, -item.WeightGrams); err != nil {
+			return fmt.Errorf("ошибка пакетного списания в мусор товара %s: %w", item.ItemID, err)
+		}
+		// Записываем лог утилизации в waste_history
+		if err := s.wasteRepo.SaveWaste(ctx, userID, groupID, item.ItemID, item.Units, item.WeightGrams, item.Reason); err != nil {
+			return fmt.Errorf("ошибка записи в историю мусора для %s: %w", item.ItemID, err)
+		}
+	}
+	return nil
+}
+
+func (s *foodTrackerService) TrackWaste(ctx context.Context, userID int64, groupID string, itemID string, units float64, weight float64, reason string) error {
+	// Временная заглушка обратной совместимости для интерфейса
+	return nil
+}
+
 
 // =========================================================================
 // 2. АСИНХРОННЫЙ СЕРВИС: Вызывается из gRPC Handlers для отправки в Kafka
@@ -141,6 +164,7 @@ func (s *foodTrackerAsyncService) TrackPurchase(ctx context.Context, userID int6
 
 func (s *foodTrackerAsyncService) TrackCooking(ctx context.Context, userID int64, groupID string, dto *domain.CookingDTO) error {
 	dto.GroupID = groupID
+	dto.UserID = userID
 	payload, err := json.Marshal(dto)
 	if err != nil {
 		return err
@@ -149,17 +173,61 @@ func (s *foodTrackerAsyncService) TrackCooking(ctx context.Context, userID int64
 }
 
 func (s *foodTrackerAsyncService) TrackConsumption(ctx context.Context, userID int64, groupID string, itemID string, units float64, weight float64) error {
-	event := map[string]interface{}{
-		"user_id": userID, "group_id": groupID, "item_id": itemID, "units": units, "weight_grams": weight,
+	// Метод-заглушка для удовлетворения интерфейса, теперь мы используем TrackBatchConsumption
+	return nil
+}
+
+
+func (s *foodTrackerAsyncService) TrackBatchWaste(ctx context.Context, userID int64, groupID string, items []domain.WasteItemDTO) error {
+	var jsonItems []map[string]interface{}
+	for _, item := range items {
+		jsonItems = append(jsonItems, map[string]interface{}{
+			"item_id":      item.ItemID,
+			"portions":     item.Units,
+			"weight_grams": item.WeightGrams,
+			"reason":       item.Reason,
+		})
 	}
-	payload, _ := json.Marshal(event)
-	return s.kafkaPublisher.PublishEvent(ctx, "consumption-events", groupID, payload)
+
+	event := map[string]interface{}{
+		"user_id":  userID,
+		"group_id": groupID,
+		"items":    jsonItems,
+	}
+	
+	payload, err := json.Marshal(event)
+	if err != nil {
+		return err
+	}
+	return s.kafkaPublisher.PublishEvent(ctx, "waste-events", groupID, payload)
 }
 
 func (s *foodTrackerAsyncService) TrackWaste(ctx context.Context, userID int64, groupID string, itemID string, units float64, weight float64, reason string) error {
-	event := map[string]interface{}{
-		"user_id": userID, "group_id": groupID, "item_id": itemID, "units": units, "weight_grams": weight, "reason": reason,
-	}
-	payload, _ := json.Marshal(event)
-	return s.kafkaPublisher.PublishEvent(ctx, "waste-events", groupID, payload)
+	return nil // Заглушка совместимости
 }
+
+
+func (s *foodTrackerAsyncService) TrackBatchConsumption(ctx context.Context, userID int64, groupID string, items []domain.ConsumptionItemDTO) error {
+	// Вручную собираем массив мап, полностью контролируя имена ключей в JSON
+	var jsonItems []map[string]interface{}
+	for _, item := range items {
+		jsonItems = append(jsonItems, map[string]interface{}{
+			"item_id":      item.ItemID,
+			"portions":     item.Units, // Явно пишем ключ "portions", который ждет Postman и воркер
+			"weight_grams": item.WeightGrams,
+		})
+	}
+
+	event := map[string]interface{}{
+		"user_id":  userID,
+		"group_id": groupID,
+		"items":    jsonItems, // Передаем чистый массив простых мап
+	}
+	
+	payload, err := json.Marshal(event)
+	if err != nil {
+		return err
+	}
+	return s.kafkaPublisher.PublishEvent(ctx, "consumption-events", groupID, payload)
+}
+

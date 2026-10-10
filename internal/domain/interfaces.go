@@ -32,6 +32,9 @@ type FoodTrackerService interface {
 	TrackCooking(ctx context.Context, userID int64, groupID string, dto *CookingDTO) error
 	TrackConsumption(ctx context.Context, userID int64, groupID string, itemID string, units float64, weight float64) error
 	TrackWaste(ctx context.Context, userID int64, groupID string, itemID string, units float64, weight float64, reason string) error
+	TrackBatchConsumption(ctx context.Context, userID int64, groupID string, items []ConsumptionItemDTO) error
+	TrackBatchWaste(ctx context.Context, userID int64, groupID string, items []WasteItemDTO) error
+
 }
 
 type FridgeInventoryService interface {

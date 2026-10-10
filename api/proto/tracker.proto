@@ -45,16 +45,25 @@ message TrackCookingRequest {
 }
 
 message TrackConsumptionRequest {
+  repeated ConsumptionItem items = 1; // Теперь передаем массив продуктов
+}
+
+message ConsumptionItem {
   string item_id = 1;
   double portions = 2;
   double weight_grams = 3;
 }
 
+
 message TrackWasteRequest {
+  repeated WasteItem items = 1; // Теперь передаем массив испорченных продуктов
+}
+
+message WasteItem {
   string item_id = 1;
   double portions = 2;
   double weight_grams = 3;
-  string reason = 4;
+  string reason = 4; // Причину (например, "Испортилось") пишем для каждого товара
 }
 
 message FridgeStateRequest {}
